@@ -1,0 +1,6 @@
+{
+  "name": "Pocket Engine - Offline AI Assistant",
+  "description": "An offline-first AI assistant with 441 Computer Course Q&As and 520 Science, Physics, Chemistry, HPE & Social Studies Q&As for Personal Tutor & Assistant, chat history, and system analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
