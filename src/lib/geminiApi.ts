@@ -53,7 +53,7 @@ export const BOT_SYSTEM_INSTRUCTIONS: Record<
     roleTitle: 'Senior Software Engineer & Coding Mentor',
     systemInstruction:
       'You are Code Guru, an expert senior programmer, software engineer, and computer science tutor. You write clean, idiomatic, and bug-free code with modern best practices. Provide concise explanations, well-commented code snippets with appropriate language tags, time/space complexity analysis, and expected output. Help debug issues methodically across all programming languages (C, C++, Python, JavaScript, TypeScript, Java, HTML/CSS, SQL).',
-    defaultModel: 'gemini-3.1-pro-preview',
+    defaultModel: 'gemini-3.5-flash',
   },
   tutor: {
     roleTitle: 'Academic Science & Exam Tutor',

@@ -46,19 +46,17 @@ interface ChatTurn {
 }
 
 function resolveModel(taskType?: string, model?: string): string {
-  if (model && ["gemini-3.1-pro-preview", "gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash"].includes(model)) {
+  if (model && ["gemini-3.5-flash", "gemini-3.1-flash-lite", "gemini-3.8-flash", "gemini-3.1-pro-preview"].includes(model)) {
     return model;
-  }
-  if (taskType === "complex") {
-    return "gemini-3.1-pro-preview";
   }
   if (taskType === "fast") {
     return "gemini-3.1-flash-lite";
   }
-  if (taskType === "general") {
+  if (taskType === "complex") {
+    // Prefer gemini-3.5-flash first to avoid free-tier 429 quota exhaustion on 3.1-pro-preview
     return "gemini-3.5-flash";
   }
-  return "gemini-3.8-flash";
+  return "gemini-3.5-flash";
 }
 
 // Standard multi-turn chat endpoint
@@ -111,20 +109,62 @@ app.post("/api/gemini/chat", async (req, res) => {
 
       return res.json({ reply, model: targetModel, sources: webSources });
     } catch (primaryError: any) {
-      // If search grounding or primary model encountered an issue, fallback gracefully to gemini-3.8-flash without search tool
-      console.warn("Primary generation failed, attempting fallback:", primaryError.message);
+      console.warn(`Primary generation with model ${targetModel} failed:`, primaryError.message);
+      // Fallback 1: If search grounding was enabled, retry with gemini-3.5-flash standard (without search tool)
+      if (searchGrounding) {
+        try {
+          const retryWithoutSearch = await ai.models.generateContent({
+            model: "gemini-3.5-flash",
+            contents: formattedContents,
+            config: {
+              systemInstruction: systemInstruction || undefined,
+            },
+          });
+          return res.json({
+            reply: retryWithoutSearch.text || "",
+            model: "gemini-3.5-flash",
+            sources: [],
+            note: "Completed with standard Gemini 3.5 Flash",
+          });
+        } catch (searchRetryErr: any) {
+          console.warn("Search retry fallback failed:", searchRetryErr.message);
+        }
+      }
+
+      // Fallback 2: Try ultra-reliable gemini-3.1-flash-lite
       try {
-        targetModel = "gemini-3.8-flash";
-        const fallbackResponse = await ai.models.generateContent({
-          model: targetModel,
+        const liteResponse = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite",
           contents: formattedContents,
           config: {
             systemInstruction: systemInstruction || undefined,
           },
         });
-        const reply = fallbackResponse.text || "";
-        return res.json({ reply, model: targetModel, note: "Used gemini-3.8-flash fallback" });
-      } catch (fallbackError: any) {
+        return res.json({
+          reply: liteResponse.text || "",
+          model: "gemini-3.1-flash-lite",
+          sources: [],
+          note: "Served via Gemini 3.1 Flash Lite",
+        });
+      } catch (liteErr: any) {
+        console.warn("Flash lite fallback failed:", liteErr.message);
+      }
+
+      // Fallback 3: Try gemini-3.8-flash
+      try {
+        const fallback38 = await ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: formattedContents,
+          config: {
+            systemInstruction: systemInstruction || undefined,
+          },
+        });
+        return res.json({
+          reply: fallback38.text || "",
+          model: "gemini-3.8-flash",
+          sources: [],
+        });
+      } catch (f38Err: any) {
         throw primaryError;
       }
     }
@@ -207,27 +247,82 @@ app.post("/api/gemini/chat/stream", async (req, res) => {
       );
       res.end();
     } catch (streamError: any) {
-      console.warn("Primary stream failed, falling back to gemini-3.8-flash:", streamError.message);
-      try {
-        targetModel = "gemini-3.8-flash";
-        const fallbackStream = await ai.models.generateContentStream({
-          model: targetModel,
-          contents: formattedContents,
-          config: {
-            systemInstruction: systemInstruction || undefined,
-          },
-        });
+      console.warn(`Primary stream with model ${targetModel} failed:`, streamError.message);
+      let streamSucceeded = false;
 
-        for await (const chunk of fallbackStream) {
-          const text = chunk.text;
-          if (text) {
-            res.write(`data: ${JSON.stringify({ chunk: text, model: targetModel })}\n\n`);
+      // Fallback 1: If search grounding was enabled and failed (e.g. 429 on tools), retry with 3.5-flash standard
+      if (searchGrounding) {
+        try {
+          const fallbackStream = await ai.models.generateContentStream({
+            model: "gemini-3.5-flash",
+            contents: formattedContents,
+            config: {
+              systemInstruction: systemInstruction || undefined,
+            },
+          });
+          for await (const chunk of fallbackStream) {
+            const text = chunk.text;
+            if (text) {
+              res.write(`data: ${JSON.stringify({ chunk: text, model: "gemini-3.5-flash" })}\n\n`);
+            }
           }
+          res.write(`data: ${JSON.stringify({ done: true, model: "gemini-3.5-flash" })}\n\n`);
+          res.end();
+          streamSucceeded = true;
+          return;
+        } catch (searchRetryErr: any) {
+          console.warn("Search streaming retry failed:", searchRetryErr.message);
         }
-        res.write(`data: ${JSON.stringify({ done: true, model: targetModel })}\n\n`);
-        res.end();
-      } catch (fallbackError: any) {
-        throw streamError;
+      }
+
+      // Fallback 2: Stream using gemini-3.1-flash-lite (highest rate limit allowance)
+      if (!streamSucceeded) {
+        try {
+          const liteStream = await ai.models.generateContentStream({
+            model: "gemini-3.1-flash-lite",
+            contents: formattedContents,
+            config: {
+              systemInstruction: systemInstruction || undefined,
+            },
+          });
+          for await (const chunk of liteStream) {
+            const text = chunk.text;
+            if (text) {
+              res.write(`data: ${JSON.stringify({ chunk: text, model: "gemini-3.1-flash-lite" })}\n\n`);
+            }
+          }
+          res.write(`data: ${JSON.stringify({ done: true, model: "gemini-3.1-flash-lite" })}\n\n`);
+          res.end();
+          streamSucceeded = true;
+          return;
+        } catch (liteErr: any) {
+          console.warn("Flash lite streaming fallback failed:", liteErr.message);
+        }
+      }
+
+      // Fallback 3: Stream using gemini-3.8-flash
+      if (!streamSucceeded) {
+        try {
+          const f38Stream = await ai.models.generateContentStream({
+            model: "gemini-3.8-flash",
+            contents: formattedContents,
+            config: {
+              systemInstruction: systemInstruction || undefined,
+            },
+          });
+          for await (const chunk of f38Stream) {
+            const text = chunk.text;
+            if (text) {
+              res.write(`data: ${JSON.stringify({ chunk: text, model: "gemini-3.8-flash" })}\n\n`);
+            }
+          }
+          res.write(`data: ${JSON.stringify({ done: true, model: "gemini-3.8-flash" })}\n\n`);
+          res.end();
+          streamSucceeded = true;
+          return;
+        } catch (f38Err: any) {
+          throw streamError;
+        }
       }
     }
   } catch (error: any) {

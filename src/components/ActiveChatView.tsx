@@ -139,7 +139,7 @@ export const ActiveChatView: React.FC<ActiveChatViewProps> = ({
     chat.selectedModel || defaultModelForBot
   );
   const [searchGrounding, setSearchGrounding] = useState<boolean>(
-    chat.searchGroundingEnabled ?? true
+    chat.searchGroundingEnabled ?? false
   );
 
   const {
