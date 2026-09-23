@@ -43,6 +43,8 @@ import {
   Check,
   ShieldCheck,
   ExternalLink,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import { BotId, ChatMessage, ChatSession, TabId } from "./types";
 import {
@@ -55,6 +57,7 @@ import {
   saveTheme,
 } from "./lib/storage";
 import { useOnlineStatus, useBatteryStatus } from "./hooks/useOnlineStatus";
+import { useVoiceInput } from "./hooks/useVoiceInput";
 import { ActiveChatView } from "./components/ActiveChatView";
 import { ToolModal } from "./components/ToolModal";
 import { MenuDrawer } from "./components/MenuDrawer";
@@ -84,12 +87,14 @@ const BOTS: Record<
   BotId,
   { name: string; Icon: React.ComponentType<{ className?: string; strokeWidth?: number }> }
 > = {
+  gemini: { name: "Gemini AI", Icon: Sparkles },
   code: { name: "Code Guru", Icon: Code2 },
   tutor: { name: "Personal Tutor", Icon: BookOpen },
   assistant: { name: "Personal Assistant", Icon: Bot },
 };
 
 const chatbots: { id: BotId; users: string }[] = [
+  { id: "gemini", users: "85k" },
   { id: "code", users: "29k" },
   { id: "tutor", users: "18k" },
   { id: "assistant", users: "12k" },
@@ -227,6 +232,11 @@ function ChatbotCard({ bot, onStartChat }: ChatbotCardProps) {
 
       <div className="flex items-center justify-between gap-1">
         <h3 className={`mt-3.5 text-[16px] sm:text-[17px] font-bold leading-tight ${TEXT}`}>{name}</h3>
+        {bot.id === 'gemini' && (
+          <span className="mt-3.5 rounded-full bg-[#0066FF]/10 px-2 py-0.5 text-[10px] font-bold text-[#0066FF] dark:bg-[#0066FF]/20 dark:text-[#6AA6FF]">
+            Multi-Turn AI
+          </span>
+        )}
         {bot.id === 'code' && (
           <span className="mt-3.5 rounded-full bg-[#0066FF]/10 px-2 py-0.5 text-[10px] font-bold text-[#0066FF] dark:bg-[#0066FF]/20 dark:text-[#6AA6FF]">
             441 Q&As
@@ -1031,32 +1041,90 @@ interface InputBarProps {
 
 function InputBar({ onSubmit }: InputBarProps) {
   const [text, setText] = useState("");
+  const { isListening, toggleListening, isSupported, error: voiceError } = useVoiceInput({
+    onTranscript: (transcriptText) => {
+      setText((prev) => {
+        // If empty or user starts speech afresh, replace or append cleanly
+        if (!prev) return transcriptText;
+        return transcriptText;
+      });
+    },
+  });
+
   const send = () => {
     if (text.trim()) {
       onSubmit(text);
       setText("");
     }
   };
+
   return (
-    <div
-      className={`flex h-13 sm:h-14 items-center gap-2 rounded-full py-1 sm:py-1.5 pl-4 sm:pl-5 pr-1 sm:pr-1.5 focus-within:ring-2 focus-within:ring-[#0066FF]/40 ${CARD} ${CARD_SHADOW}`}
-    >
-      <input
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => e.key === "Enter" && send()}
-        placeholder="Explain climate change simply..."
-        aria-label="Ask PocketEngine"
-        className="min-w-0 flex-1 bg-transparent text-[13.5px] sm:text-[14px] font-medium text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100"
-      />
-      <button
-        onClick={send}
-        aria-label="Send message"
-        className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-full text-white transition active:scale-90"
-        style={{ background: BLUE, boxShadow: "0 8px 16px -4px rgba(0,102,255,0.55)" }}
+    <div className="relative">
+      {voiceError && (
+        <div className="absolute -top-9 left-4 right-4 z-20 rounded-lg bg-amber-500/90 px-3 py-1 text-[11px] font-medium text-white shadow-md backdrop-blur-xs">
+          {voiceError}
+        </div>
+      )}
+
+      <div
+        className={`flex h-13 sm:h-14 items-center gap-1.5 sm:gap-2 rounded-full py-1 sm:py-1.5 pl-3.5 sm:pl-5 pr-1 sm:pr-1.5 transition-all ${
+          isListening
+            ? "ring-2 ring-red-500/80 shadow-[0_0_20px_rgba(239,68,68,0.25)]"
+            : "focus-within:ring-2 focus-within:ring-[#0066FF]/40"
+        } ${CARD} ${CARD_SHADOW}`}
       >
-        <Send className="h-4.5 w-4.5 sm:h-5 sm:w-5" strokeWidth={2.2} style={{ transform: "translate(-1px, 1px)" }} />
-      </button>
+        {isListening ? (
+          <div className="flex items-center gap-2 pl-1 pr-2">
+            <span className="relative flex h-3 w-3">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+              <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500" />
+            </span>
+            <span className="text-[12px] font-semibold text-red-600 dark:text-red-400 shrink-0">
+              Listening...
+            </span>
+          </div>
+        ) : null}
+
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && send()}
+          placeholder={isListening ? "Speak now..." : "Explain climate change simply..."}
+          aria-label="Ask PocketEngine"
+          className="min-w-0 flex-1 bg-transparent text-[13.5px] sm:text-[14px] font-medium text-slate-800 outline-none placeholder:text-slate-400 dark:text-slate-100"
+        />
+
+        {/* Voice Input Button */}
+        {isSupported && (
+          <button
+            type="button"
+            onClick={toggleListening}
+            title={isListening ? "Stop voice dictation" : "Voice Input (Dictate question)"}
+            aria-label={isListening ? "Stop voice dictation" : "Voice Input"}
+            className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-full transition active:scale-90 ${
+              isListening
+                ? "bg-red-500 text-white animate-pulse shadow-md shadow-red-500/30"
+                : "bg-slate-100 text-slate-600 hover:bg-[#EAF3FF] hover:text-[#0066FF] dark:bg-white/[0.08] dark:text-slate-300 dark:hover:text-[#6AA6FF]"
+            }`}
+          >
+            {isListening ? (
+              <MicOff className="h-4 w-4 sm:h-4.5 sm:w-4.5" strokeWidth={2.2} />
+            ) : (
+              <Mic className="h-4 w-4 sm:h-4.5 sm:w-4.5" strokeWidth={2.2} />
+            )}
+          </button>
+        )}
+
+        <button
+          onClick={send}
+          disabled={!text.trim()}
+          aria-label="Send message"
+          className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-full text-white transition active:scale-90 disabled:opacity-40"
+          style={{ background: BLUE, boxShadow: text.trim() ? "0 8px 16px -4px rgba(0,102,255,0.55)" : "none" }}
+        >
+          <Send className="h-4.5 w-4.5 sm:h-5 sm:w-5" strokeWidth={2.2} style={{ transform: "translate(-1px, 1px)" }} />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1187,7 +1255,7 @@ export default function PocketEngine() {
 
     // Detect likely bot persona
     const lower = query.toLowerCase();
-    let selectedBot: BotId = "assistant";
+    let selectedBot: BotId = "gemini";
     if (
       lower.includes("code") ||
       lower.includes("react") ||
@@ -1209,6 +1277,8 @@ export default function PocketEngine() {
       lower.includes("physics")
     ) {
       selectedBot = "tutor";
+    } else if (lower.includes("email") || lower.includes("schedule") || lower.includes("plan")) {
+      selectedBot = "assistant";
     }
 
     const title = query.length > 36 ? query.slice(0, 36) + "..." : query;

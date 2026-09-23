@@ -9,6 +9,28 @@ const LEGACY_THEME_KEY = 'vethos_theme';
 
 export const INITIAL_CHATS: ChatSession[] = [
   {
+    id: 0,
+    bot: 'gemini',
+    group: 'Today',
+    time: '10:05 AM',
+    title: 'Multi-turn chat with Google Gemini',
+    selectedModel: 'gemini-3.5-flash',
+    messages: [
+      { from: 'user', text: 'Hi Gemini! Can you explain quantum computing to a beginner?' },
+      {
+        from: 'ai',
+        text: 'Imagine regular computers work with light switches that can only be either ON (1) or OFF (0). Quantum computers use "qubits" which can be both ON and OFF at the same time, thanks to a phenomenon called superposition. This allows them to explore vast numbers of possibilities simultaneously, making them extraordinarily powerful for cryptography, drug discovery, and optimization problems.',
+        modelUsed: 'gemini-3.5-flash',
+      },
+      { from: 'user', text: 'How is that different from parallel computing?' },
+      {
+        from: 'ai',
+        text: 'Great follow-up question! Parallel computing uses multiple standard processors working on different pieces of a problem at the same time. While it speeds up calculation, each processor is still constrained by classical bits (0 or 1).\n\nIn contrast, quantum computing uses quantum entanglement and superposition. Rather than just running many checks in parallel, quantum algorithms cause wrong answers to cancel each other out (destructive interference) and amplify the correct answer (constructive interference), tackling problems that would take classical supercomputers millennia.',
+        modelUsed: 'gemini-3.5-flash',
+      },
+    ],
+  },
+  {
     id: 1,
     bot: 'code',
     group: 'Today',
